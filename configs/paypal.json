@@ -1,0 +1,7 @@
+{
+    "name": "PayPal",
+    "logo": "https://www.paypalobjects.com/paypal-ui/logos/svg/paypal-mark-color.svg",
+    "primary": "#0070ba",
+    "redirect": "https://paypal.com/signin",
+    "hasBilling": true
+}

